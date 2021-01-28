@@ -12,7 +12,7 @@ android {
     defaultConfig {
         applicationId "com.pixeumstudios.bluetoothbasics"
         minSdkVersion 23
-        targetSdkVersion 30
+        targetSdkVersion 28 // if set to 30, bluetooth scan doesn't work
         versionCode 1
         versionName "1.0"
 

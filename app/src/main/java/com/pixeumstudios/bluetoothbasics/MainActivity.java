@@ -38,24 +38,45 @@ import java.util.Set;
  * https://code.tutsplus.com/tutorials/create-a-bluetooth-scanner-with-androids-bluetooth-api--cms-24084
  * https://developer.android.com/guide/topics/connectivity/bluetooth.html
  * https://github.com/android/connectivity-samples
+ * https://stackoverflow.com/questions/34966133/android-bluetooth-discovery-doesnt-find-any-device
+ * https://stackoverflow.com/questions/38809845/android-bluetooth-app-cant-discover-other-devices
+ * https://stackoverflow.com/questions/37423199/bluetooth-le-gatt-not-finding-any-devices/37423244#37423244
+ * https://stackoverflow.com/questions/30222409/android-broadcast-receiver-bluetooth-events-catching
+ *
+ * https://create.arduino.cc/projecthub/azoreanduino/simple-bluetooth-lamp-controller-using-android-and-arduino-aa2253
+ *
  */
 public class MainActivity extends AppCompatActivity {
     private static final int REQUEST_LOCATION_BT = 3;
     private static final int REQUEST_ENABLE_BT = 2;
+    private static final String TAG = "BLUETOOTH";
     private BluetoothAdapter bluetoothAdapter;
     private ArrayList<String> deviceList;
     private ActivityMainBinding binding;
     private ArrayAdapter<String> listAdapter;
+    private IntentFilter intentFilter;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
-
         requiredSetup();
         setupListView();
 
+        intentFilter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
+        intentFilter.addAction(BluetoothAdapter.ACTION_DISCOVERY_STARTED);
+        intentFilter.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
+        intentFilter.addAction(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED);
+
+    }
+
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        registerReceiver(mReceiver, intentFilter);
 
     }
 
@@ -79,24 +100,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void requiredSetup() {
-      /*  try {
-            // Register for broadcasts when a device is discovered
-            IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
-            this.registerReceiver(mReceiver, filter);
-
-            // Register for broadcasts when discovery has finished
-            filter = new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_STARTED);
-            this.registerReceiver(mReceiver, filter);
-
-            // Register for broadcasts when discovery has finished
-            filter = new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
-            this.registerReceiver(mReceiver, filter);
-        } catch (IllegalArgumentException e) {
-            e.printStackTrace();
-            Toast.makeText(this, "receivers not registered", Toast.LENGTH_SHORT).show();
-        }
-*/
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             if (ContextCompat.checkSelfPermission(getApplicationContext(),
                     Manifest.permission.ACCESS_BACKGROUND_LOCATION)
@@ -110,6 +113,7 @@ public class MainActivity extends AppCompatActivity {
 
         // checking if device supports bluetooth
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+        Log.i(TAG, bluetoothAdapter.isEnabled() + "");
         if (bluetoothAdapter == null) {
             // Device doesn't support Bluetooth
             Toast.makeText(this, "Device doesnt support bluetooth", Toast.LENGTH_SHORT).show();
@@ -133,7 +137,7 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "App requires bluetooth to function", Toast.LENGTH_SHORT).show();
         }
     }
-    
+
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String permissions[], @NonNull int[] grantResults) {
         if (requestCode == REQUEST_LOCATION_BT) {
@@ -151,7 +155,6 @@ public class MainActivity extends AppCompatActivity {
      * initializes device discovery. The list of devices are sent to the broadcast receiver
      * The discovery process usually involves an inquiry scan of about 12 seconds,
      * followed by a page scan of each device found to retrieve its Bluetooth name.
-     *
      */
     private void startScan() {
         // If we're already discovering, stop it
@@ -160,11 +163,10 @@ public class MainActivity extends AppCompatActivity {
             bluetoothAdapter.cancelDiscovery();
         } else {
             try {
-                // Register for broadcasts when a device is discovered
-                IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
-                this.registerReceiver(mReceiver, filter);
+                registerReceiver(mReceiver, intentFilter);
                 // Request discover from BluetoothAdapter
-                bluetoothAdapter.startDiscovery();
+                boolean as = bluetoothAdapter.startDiscovery();
+                Toast.makeText(this, as + "", Toast.LENGTH_SHORT).show();
                 binding.progressBar.setVisibility(View.VISIBLE);
 
             } catch (IllegalArgumentException e) {
@@ -175,13 +177,16 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-
-
+    /**
+     * @param view the button view that is pressed and the scanning begins
+     */
     public void searchDevices(View view) {
+        // checking if location permissions enabled
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, REQUEST_LOCATION_BT);
+        } else {
+            startScan();
         }
-        startScan();
     }
 
     /**
@@ -192,16 +197,17 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
-            Toast.makeText(getApplicationContext(), "reeiver working", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getApplicationContext(), "receiver working", Toast.LENGTH_SHORT).show();
 
             // When discovery finds a device
             if (BluetoothDevice.ACTION_FOUND.equals(action)) {
                 // Get the BluetoothDevice object from the Intent
                 BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
                 // If it's already paired, skip it, because it's been listed already
+
                 if (device != null && device.getBondState() != BluetoothDevice.BOND_BONDED) {
-                    listAdapter.add(device.getName() + "\n" + device.getAddress());
-                    Log.i("NEW DEVICE", device.getName());
+                    listAdapter.add(device.getName() + "\n" + device.getAddress() + "\n" +
+                            device.getAlias() + "\n" + device.getType());
                     listAdapter.notifyDataSetChanged();
                 }
                 // When discovery is finished, change the Activity title
@@ -221,11 +227,9 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
-
     @Override
     protected void onDestroy() {
         super.onDestroy();
-
         // Make sure we're not doing discovery anymore
         if (bluetoothAdapter != null) {
             bluetoothAdapter.cancelDiscovery();
